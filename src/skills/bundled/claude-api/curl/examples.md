@@ -1,1 +1,3 @@
-# STUB
+# Curl Examples
+
+Restored placeholder content.

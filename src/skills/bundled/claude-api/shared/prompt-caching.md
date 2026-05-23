@@ -1,1 +1,3 @@
-export {};
+# Prompt Caching
+
+Restored placeholder content.

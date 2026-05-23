@@ -14,6 +14,7 @@ import {
 } from '../../utils/mcpOutputStorage.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { importRequiredRuntimeModule } from '../../utils/runtimeModules.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 
@@ -85,15 +86,22 @@ export function clearWebFetchCache(): void {
 // Lazy singleton — defers the turndown → @mixmark-io/domino import (~1.4MB
 // retained heap) until the first HTML fetch, and reuses one instance across
 // calls (construction builds 15 rule objects; .turndown() is stateless).
-// @types/turndown ships only `export =` (no .d.mts), so TS types the import
-// as the class itself while Bun wraps CJS in { default } — hence the cast.
-type TurndownCtor = typeof import('turndown')
-let turndownServicePromise: Promise<InstanceType<TurndownCtor>> | undefined
-function getTurndownService(): Promise<InstanceType<TurndownCtor>> {
-  return (turndownServicePromise ??= import('turndown').then(m => {
-    const Turndown = (m as unknown as { default: TurndownCtor }).default
-    return new Turndown()
-  }))
+type TurndownService = {
+  turndown(input: string): string
+}
+
+type TurndownCtor = new () => TurndownService
+
+let turndownServicePromise: Promise<TurndownService> | undefined
+function getTurndownService(): Promise<TurndownService> {
+  return (turndownServicePromise ??=
+    importRequiredRuntimeModule<TurndownCtor | { default: TurndownCtor }>(
+      'turndown',
+      'HTML to markdown conversion',
+    ).then(mod => {
+      const Turndown = typeof mod === 'function' ? mod : mod.default
+      return new Turndown()
+    }))
 }
 
 // PSR requested limiting the length of URLs to 250 to lower the potential

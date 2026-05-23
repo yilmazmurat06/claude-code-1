@@ -1,1 +1,3 @@
-export {};
+# Verify
+
+Restored placeholder content.

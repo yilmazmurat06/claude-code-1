@@ -1,1 +1,3 @@
-export {};
+# Error Codes
+
+Restored placeholder content.

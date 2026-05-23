@@ -1,1 +1,3 @@
-# STUB
+# Go Claude API
+
+Restored placeholder content.

@@ -1,1 +1,3 @@
-# STUB
+# Python Batches
+
+Restored placeholder content.

@@ -585,6 +585,12 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE') ? {
 export async function main() {
   profileCheckpoint('main_function_start');
 
+  // Preserve the restored debug alias without registering an invalid
+  // multi-character short flag in Commander.
+  if (process.argv.includes('-d2e')) {
+    process.argv = process.argv.map(arg => arg === '-d2e' ? '--debug-to-stderr' : arg);
+  }
+
   // SECURITY: Prevent Windows from executing commands from current directory
   // This must be set before ANY command execution to prevent PATH hijacking attacks
   // See: https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-searchpathw

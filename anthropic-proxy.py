@@ -79,17 +79,43 @@ class AnthropicProxy(BaseHTTPRequestHandler):
         openai_messages = self._convert_messages(messages, system)
 
         # Build OpenAI request body
+        # Force stream=False for now since we don't handle SSE streaming yet
         openai_body = {
             "model": DEEPSEEK_MODEL,
             "messages": openai_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "stream": stream,
+            "stream": False,
         }
         if top_p is not None:
             openai_body["top_p"] = top_p
         if stop:
             openai_body["stop"] = stop
+
+        # Translate tools from Anthropic to OpenAI format
+        tools = req.get("tools", [])
+        if tools:
+            openai_tools = []
+            for tool in tools:
+                openai_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name", ""),
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("input_schema", {}),
+                    }
+                })
+            openai_body["tools"] = openai_tools
+
+        # Translate tool_choice
+        tool_choice = req.get("tool_choice")
+        if tool_choice:
+            if tool_choice.get("type") == "auto":
+                openai_body["tool_choice"] = "auto"
+            elif tool_choice.get("type") == "any":
+                openai_body["tool_choice"] = "required"
+            elif tool_choice.get("type") == "tool":
+                openai_body["tool_choice"] = {"type": "function", "function": {"name": tool_choice.get("name", "")}}
 
         # Call DeepSeek API
         try:
@@ -98,10 +124,7 @@ class AnthropicProxy(BaseHTTPRequestHandler):
             self._error(500, f"DeepSeek API error: {str(e)}")
             return
 
-        if stream:
-            self._handle_stream_response(resp_data)
-        else:
-            self._handle_normal_response(resp_data, req)
+        self._handle_normal_response(resp_data, req)
 
     def _convert_messages(self, anthropic_messages, system_prompt):
         """Convert Anthropic messages to OpenAI format."""

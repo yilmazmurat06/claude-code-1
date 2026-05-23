@@ -57,6 +57,7 @@ import { getProxyUrl, shouldBypassProxy } from '../proxy.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
+import { importRequiredRuntimeModule } from '../runtimeModules.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
 import { BigQueryMetricsExporter } from './bigqueryExporter.js'
 import { ClaudeCodeDiagLogger } from './logger.js'
@@ -166,22 +167,31 @@ async function getOtlpReaders() {
         case 'grpc': {
           // Lazy-import to keep @grpc/grpc-js (~700KB) out of the telemetry chunk
           // when the protocol is http/protobuf (ant default) or http/json.
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-grpc'
+          const { OTLPMetricExporter } = await importRequiredRuntimeModule<{
+            OTLPMetricExporter: new () => unknown
+          }>(
+            '@opentelemetry/exporter-metrics-otlp-grpc',
+            'OTLP metrics gRPC exporter',
           )
           exporters.push(new OTLPMetricExporter())
           break
         }
         case 'http/json': {
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-http'
+          const { OTLPMetricExporter } = await importRequiredRuntimeModule<{
+            OTLPMetricExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-metrics-otlp-http',
+            'OTLP metrics HTTP exporter',
           )
           exporters.push(new OTLPMetricExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-proto'
+          const { OTLPMetricExporter } = await importRequiredRuntimeModule<{
+            OTLPMetricExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-metrics-otlp-proto',
+            'OTLP metrics protobuf exporter',
           )
           exporters.push(new OTLPMetricExporter(httpConfig))
           break
@@ -192,9 +202,9 @@ async function getOtlpReaders() {
           )
       }
     } else if (exporterType === 'prometheus') {
-      const { PrometheusExporter } = await import(
-        '@opentelemetry/exporter-prometheus'
-      )
+      const { PrometheusExporter } = await importRequiredRuntimeModule<{
+        PrometheusExporter: new () => unknown
+      }>('@opentelemetry/exporter-prometheus', 'Prometheus exporter')
       exporters.push(new PrometheusExporter())
     } else {
       throw new Error(
@@ -235,22 +245,31 @@ async function getOtlpLogExporters() {
 
       switch (protocol) {
         case 'grpc': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-grpc'
+          const { OTLPLogExporter } = await importRequiredRuntimeModule<{
+            OTLPLogExporter: new () => unknown
+          }>(
+            '@opentelemetry/exporter-logs-otlp-grpc',
+            'OTLP logs gRPC exporter',
           )
           exporters.push(new OTLPLogExporter())
           break
         }
         case 'http/json': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-http'
+          const { OTLPLogExporter } = await importRequiredRuntimeModule<{
+            OTLPLogExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-logs-otlp-http',
+            'OTLP logs HTTP exporter',
           )
           exporters.push(new OTLPLogExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-proto'
+          const { OTLPLogExporter } = await importRequiredRuntimeModule<{
+            OTLPLogExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-logs-otlp-proto',
+            'OTLP logs protobuf exporter',
           )
           exporters.push(new OTLPLogExporter(httpConfig))
           break
@@ -286,22 +305,31 @@ async function getOtlpTraceExporters() {
 
       switch (protocol) {
         case 'grpc': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-grpc'
+          const { OTLPTraceExporter } = await importRequiredRuntimeModule<{
+            OTLPTraceExporter: new () => unknown
+          }>(
+            '@opentelemetry/exporter-trace-otlp-grpc',
+            'OTLP traces gRPC exporter',
           )
           exporters.push(new OTLPTraceExporter())
           break
         }
         case 'http/json': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-http'
+          const { OTLPTraceExporter } = await importRequiredRuntimeModule<{
+            OTLPTraceExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-trace-otlp-http',
+            'OTLP traces HTTP exporter',
           )
           exporters.push(new OTLPTraceExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-proto'
+          const { OTLPTraceExporter } = await importRequiredRuntimeModule<{
+            OTLPTraceExporter: new (config: Record<string, unknown>) => unknown
+          }>(
+            '@opentelemetry/exporter-trace-otlp-proto',
+            'OTLP traces protobuf exporter',
           )
           exporters.push(new OTLPTraceExporter(httpConfig))
           break
@@ -359,8 +387,12 @@ async function initializeBetaTracing(
   }
 
   const [{ OTLPTraceExporter }, { OTLPLogExporter }] = await Promise.all([
-    import('@opentelemetry/exporter-trace-otlp-http'),
-    import('@opentelemetry/exporter-logs-otlp-http'),
+    importRequiredRuntimeModule<{
+      OTLPTraceExporter: new (config: Record<string, unknown>) => unknown
+    }>('@opentelemetry/exporter-trace-otlp-http', 'Beta trace exporter'),
+    importRequiredRuntimeModule<{
+      OTLPLogExporter: new (config: Record<string, unknown>) => unknown
+    }>('@opentelemetry/exporter-logs-otlp-http', 'Beta log exporter'),
   ])
 
   const httpConfig = {

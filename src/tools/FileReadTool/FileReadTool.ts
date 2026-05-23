@@ -73,6 +73,7 @@ import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.
 import { readFileInRange } from '../../utils/readFileInRange.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { importRequiredRuntimeModule } from '../../utils/runtimeModules.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
 import { getDefaultFileReadingLimits } from './limits.js'
 import {
@@ -1155,7 +1156,29 @@ export async function readImageWithTokenBudget(
       logError(e)
       // Fallback: heavily compressed version from the SAME buffer
       try {
-        const sharpModule = await import('sharp')
+        const sharpModule = await importRequiredRuntimeModule<
+          { default?: (input: Buffer) => {
+            jpeg(options?: { quality?: number }): {
+              resize(
+                width: number,
+                height: number,
+                options?: { fit?: string; withoutEnlargement?: boolean },
+              ): {
+                toBuffer(): Promise<Buffer>
+              }
+            }
+          } } & ((input: Buffer) => {
+            jpeg(options?: { quality?: number }): {
+              resize(
+                width: number,
+                height: number,
+                options?: { fit?: string; withoutEnlargement?: boolean },
+              ): {
+                toBuffer(): Promise<Buffer>
+              }
+            }
+          })
+        >('sharp', 'Image compression fallback')
         const sharp =
           (
             sharpModule as {

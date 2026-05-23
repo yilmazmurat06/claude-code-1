@@ -1,1 +1,3 @@
-export {};
+# TypeScript Streaming
+
+Restored placeholder content.

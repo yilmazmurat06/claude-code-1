@@ -1756,8 +1756,3 @@ export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
 
-// NOTE: isReplBridgeActive was not included in the sourcemap leak; stub added.
-export function isReplBridgeActive(): boolean {
-  return false
-}
-

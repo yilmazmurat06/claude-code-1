@@ -431,8 +431,19 @@ export async function getOrganizationUUID(): Promise<string | null> {
     return orgUUID
   }
 
+  // Restored/dev builds may have token metadata populated without the full
+  // config write path. Prefer local token-derived values before making a
+  // profile request or giving up.
+  const cachedTokens = getClaudeAIOAuthTokens()
+  const tokenOrgUUID =
+    cachedTokens?.tokenAccount?.organizationUuid ??
+    cachedTokens?.profile?.organization?.uuid
+  if (tokenOrgUUID) {
+    return tokenOrgUUID
+  }
+
   // Fall back to fetching from profile (requires user:profile scope)
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken
+  const accessToken = cachedTokens?.accessToken
   if (accessToken === undefined || !hasProfileScope()) {
     return null
   }

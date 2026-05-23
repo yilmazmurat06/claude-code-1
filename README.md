@@ -1,142 +1,300 @@
-# Claude Code's Entire Source Code Got Leaked via a Sourcemap in npm, Let's Talk About It
+# Claude Code 源码还原
 
-> **PS:** This breakdown is also available on [this blog](https://kuber.studio/blog/AI/Claude-Code's-Entire-Source-Code-Got-Leaked-via-a-Sourcemap-in-npm,-Let's-Talk-About-it) with a better reading experience and UX :)
-
-> **Note:** There's a non-zero chance this repo might be taken down. If you want to play around with it later or archive it yourself, feel free to **fork it** and bookmark the external blog link!
-
----
-
-## ⚠️ Important Disclaimer
-
-**I did not leak these files.** I have simply provided an easy, documented way to access and study this codebase for research purposes. All files and information originate from public findings shared on Twitter/X. All credit for the discovery goes to the original source.
+> [!WARNING]
+> 本仓库为**非官方**版本，基于公开 npm 发布包 source map 还原，**仅供研究学习**。源码版权归 [Anthropic](https://www.anthropic.com) 所有。
 
 ---
 
-Earlier today (March 31st, 2026) - **Chaofan Shou (@Fried_rice)** discovered something that Anthropic probably didn't want the world to see: the **entire source code** of Claude Code, Anthropic's official AI coding CLI, was sitting in plain sight on the npm registry via a sourcemap file bundled into the published package.
+## 快速开始
 
-[![The tweet announcing the leak](assets/x-post.png)](https://x.com/Fried_rice/status/2038894956459290963)
-
-This repository is a backup of that leaked source, providing a full breakdown of what's in it, how the leak happened, and the internal systems that were never meant to be public.
-
----
-
-## 🧐 How Did This Even Happen?
-
-When you publish a JavaScript/TypeScript package to npm, the build toolchain often generates **source map files** (`.map` files). These files bridge minified production code and the original source for debugging.
-
-The catch? **Source maps contain the original source code** embedded as strings inside a JSON file under the `sourcesContent` key.
-
-```json
-{
-  "version": 3,
-  "sources": ["../src/main.tsx", "../src/tools/BashTool.ts", "..."],
-  "sourcesContent": ["// The ENTIRE original source code of each file", "..."],
-  "mappings": "AAAA,SAAS,OAAO..."
-}
-```
-
-By forgetting to add `*.map` to `.npmignore` or failing to disable source maps in production builds (Bun's default behavior), the entire raw source was shipped to the npm registry.
-
-[![Claude Code source files exposed in npm package](assets/claude-npm-img.png)](assets/claude-npm-img.png)
-
----
-
-## 🛠 What's Under the Hood?
-
-Claude Code is not just a simple CLI. It's a massive **785KB `main.tsx`** entry point featuring a custom React terminal renderer (Ink), 40+ tools, and complex multi-agent orchestration.
-
-### 🐣 BUDDY - The Terminal Tamagotchi
-Inside [`src/buddy/`](./src/buddy/), there is a full **Tamagotchi-style companion system**.
-- **Deterministic Gacha:** Uses a Mulberry32 PRNG seeded from your `userId`.
-- **18 Species:** Ranging from Common (*Pebblecrab*) to Legendary (*Nebulynx*).
-- **Stats & Souls:** Every buddy has stats like `DEBUGGING`, `CHAOS`, and `SNARK`, with a "soul" description written by Claude.
-
-### 🕵️‍♂️ Undercover Mode - "Do Not Blow Your Cover"
-Anthropic employees use Claude Code to contribute to public repos. **Undercover Mode** ([`src/utils/undercover.ts`](./src/utils/undercover.ts)) prevents the AI from leaking internal info:
-- Blocks internal model codenames (e.g., *Capybara*, *Tengu*).
-- Hides the fact that the user is an AI.
-- Confirms that **"Tengu"** is likely the internal codename for Claude Code.
-
-### 🌙 The "Dream" System
-Claude Code "dreams" to consolidate memory. The **autoDream** service ([`src/services/autoDream/`](./src/services/autoDream/)) runs as a background subagent to:
-1. **Orient:** Read `MEMORY.md`.
-2. **Gather:** Find new signals from daily logs.
-3. **Consolidate:** Update durable memory files.
-4. **Prune:** Keep context efficient.
-
-### 🚀 KAIROS & ULTRAPLAN
-- **KAIROS:** An "always-on" proactive assistant that watches logs and acts without waiting for input.
-- **ULTRAPLAN:** Offloads complex tasks to a remote **Opus 4.6** session for up to 30 minutes of deep planning.
-
----
-
-## 📂 Architecture & Directory Structure
-
-```text
-src/
-├── main.tsx                 # CLI Entrypoint (Commander.js + React/Ink)
-├── QueryEngine.ts           # Core LLM logic
-├── Tool.ts                  # Base tool definitions
-├── tools/                   # 40+ Agent tools (Bash, Files, LSP, Web)
-├── services/                # Backend (MCP, OAuth, Analytics, Dreams)
-├── coordinator/             # Multi-agent orchestration (Swarm)
-├── bridge/                  # IDE Integration layer
-└── buddy/                   # The secret Tamagotchi system
-```
-
----
-
-## ⚙️ How to Use & Explore
-
-### 📦 Prerequisites
-- **[Bun Runtime](https://bun.sh)** (Highly Recommended) or Node.js v18+
-- **TypeScript** installed globally
-
-### 🚀 Getting Started
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/claude-leaked.git
-    cd claude-leaked
-    ```
-
-2.  **Install Dependencies:**
-    ```bash
-    npm install
-    ```
-
-3.  **Build the Project:**
-    ```bash
-    npm run build
-    ```
-
-4.  **Run the CLI:**
-    ```bash
-    node dist/main.js
-    ```
-
-### 🔍 Explore with MCP
-This repo includes an **MCP Server** to let you explore the source using Claude itself:
 ```bash
-claude mcp add code-explorer -- npx -y claude-code-explorer-mcp
+bun install       # 安装依赖（需要 Bun ≥ 1.3.5、Node.js ≥ 24）
+bun run dev       # 启动 CLI
+bun run version   # 验证版本
 ```
 
 ---
 
-## 📈 SEO & Rankings
-**Keywords:** `Claude Code Leak`, `Anthropic Source Code`, `AI Agent Framework`, `Claude 3.5 Sonnet CLI`, `Tengu Anthropic`, `npm sourcemap leak`, `Open Source AI Agent`.
+## 从源码中发现的 7 大隐藏功能
+
+通过阅读还原后的 1,987 个 TypeScript 源文件，我们发现了大量未公开的隐藏功能。这些功能通过**编译开关**（`feature()`）和**用户类型**（`USER_TYPE`）进行门控，外部发布版中大部分被裁剪。
 
 ---
 
-## 📜 Credits & Legal
+### 1. BUDDY — AI 电子宠物
 
-- **Discovery:** [Chaofan Shou (@Fried_rice)](https://x.com/Fried_rice)
-- **Source Post:** [Twitter/X Announcement](https://x.com/Fried_rice/status/2038894956459290963)
-- **Author of this Mirror:** [Yasas Banu](https://www.yasasbanuka.tech)
+> 源码位置：`src/buddy/`
 
-**Disclaimer:** All original source code is the proprietary property of **Anthropic PBC**. This repository is for educational and archival purposes only. **This is not an official Anthropic product.**
+终端里的拓麻歌子！一个完整的虚拟宠物系统。
+
+- **18 种物种**：鸭子、鹅、猫、龙、章鱼、猫头鹰、企鹅、乌龟、蜗牛、幽灵、六角恐龙、水豚、仙人掌、机器人、兔子、蘑菇、果冻、胖猫
+- **5 级稀有度**：普通(60%) → 非凡(25%) → 稀有(10%) → 史诗(4%) → 传说(1%)
+- **1% 闪光概率**：独立于稀有度，任何宠物都有 1% 概率成为闪光个体
+- **确定性生成**：使用账号 UUID + 固定盐值 `'friend-2026-401'` 经 FNV-1a 哈希 → Mulberry32 PRNG，每人只会得到一只固定的宠物，改配置也没用
+- **外观系统**：6 种眼睛样式 + 8 种帽子（皇冠、巫师帽、光环等），common 稀有度没有帽子
+- **交互**：`/buddy pet` 抚摸（爱心动画）、`/buddy hatch` 孵化、`/buddy card` 查看卡片
+- **动画**：500ms 帧率的 ASCII 精灵动画，气泡对话，窄终端自动退化为表情文字脸（如 `=·ω·=`）
+- **编译开关**：`feature('BUDDY')`
 
 ---
 
-### 📩 Contact
-For spamming reasons the email has been removed. 
+### 2. KAIROS — 永不关机的 Claude
+
+> 源码位置：`src/assistant/`、`src/proactive/`、`src/services/autoDream/`
+
+关掉终端 Claude 还在运行的持久助手模式。
+
+- **跨会话持久运行**：通过 `.claude/settings.json` 的 `assistant: true` 激活，会话状态持久化到磁盘
+- **每日日志**：自动在 `<autoMemPath>/logs/YYYY/MM/YYYY-MM-DD.md` 记录工作日志
+- **自动做梦（Dream）**：距上次整合超 24 小时且有 5+ 新会话时，后台自动启动记忆整合子代理，分四阶段运行：Orient → Gather → Consolidate → Prune
+- **锁机制**：`.consolidate-lock` 文件 + PID 存活检查，防止多进程同时做梦
+- **主动模式（Proactive）**：没人说话时自己找活干，没活就调用 `SleepTool` 等着。接收周期性 `<tick>` 提示来检查是否有事可做
+- **后台任务**：命令超 15 秒自动丢后台，支持持久 cron 任务（`permanent: true` 不受 7 天过期限制）
+- **编译开关**：`feature('KAIROS')`、`feature('KAIROS_BRIEF')`、`feature('KAIROS_CHANNELS')`
+- **远程开关**：GrowthBook `tengu_kairos`、`tengu_onyx_plover`（Dream 阈值配置）
+
+---
+
+### 3. ULTRAPLAN — 云端深度规划
+
+> 源码位置：`src/commands/ultraplan.tsx`、`src/utils/ultraplan/`
+
+把难题甩给云端 Opus 独立研究最长 30 分钟。
+
+- **流程**：`/ultraplan <prompt>` → 创建远程 CCR 会话 → Opus 模型独立研究 → 后台轮询等待（30 分钟超时）→ 浏览器查看/修改方案 → 批准执行或传送回本地
+- **关键词触发**：消息中包含 "ultraplan" 自动触发，智能排除引号/路径/标识符中的误触发
+- **传送（Teleport）**：`src/utils/teleport.tsx` 实现本地 ↔ 远程会话传输，支持 Git Bundle 打包代码上下文
+- **完全内部限定**：`isEnabled: () => "external" === 'ant'`，外部版永远不可用
+- **编译开关**：`feature('ULTRAPLAN')`
+- **远程开关**：`tengu_ultraplan_model`（控制使用的模型）
+
+---
+
+### 4. Coordinator — 多 Agent 编排模式
+
+> 源码位置：`src/coordinator/`
+
+主 Claude 变成纯指挥官，Worker 并行执行任务。
+
+- **角色分离**：Coordinator 只有三个工具——派活（Agent）、通信（SendMessage）、停工（Shutdown）
+- **Worker 机制**：Worker 在独立子进程中运行，各自拥有完整工具集
+- **核心铁律**：系统提示中明确规定"禁止甩锅式委派"——不能把不清楚的需求直接丢给 Worker
+- **任务追踪**：基于文件的共享任务列表（`~/.claude/tasks/`），Coordinator 和 Worker 共同读写
+- **编译开关**：`feature('COORDINATOR_MODE')`
+- **环境变量**：`CLAUDE_CODE_COORDINATOR_MODE`
+
+---
+
+### 5. 26+ 隐藏命令 & 秘密开关
+
+> 源码位置：`src/commands.ts`、`src/commands/`
+
+#### Feature-gated 命令（编译开关控制）
+
+| 命令          | 功能         | 开关                      |
+| ------------- | ------------ | ------------------------- |
+| `/buddy`      | 宠物系统     | `BUDDY`                   |
+| `/proactive`  | 主动自主模式 | `PROACTIVE` / `KAIROS`    |
+| `/assistant`  | 助手模式     | `KAIROS`                  |
+| `/brief`      | 简报模式     | `KAIROS` / `KAIROS_BRIEF` |
+| `/bridge`     | 远程控制桥接 | `BRIDGE_MODE`             |
+| `/voice`      | 语音模式     | `VOICE_MODE`              |
+| `/ultraplan`  | 云端深度规划 | `ULTRAPLAN`               |
+| `/fork`       | 子代理分叉   | `FORK_SUBAGENT`           |
+| `/peers`      | 对等通信     | `UDS_INBOX`               |
+| `/workflows`  | 工作流脚本   | `WORKFLOW_SCRIPTS`        |
+| `/torch`      | Torch 功能   | `TORCH`                   |
+| `/force-snip` | 强制历史截断 | `HISTORY_SNIP`            |
+
+#### 仅内部用户（`USER_TYPE === 'ant'`）命令
+
+| 命令               | 功能                |
+| ------------------ | ------------------- |
+| `/teleport`        | 传送会话到远程/本地 |
+| `/bughunter`       | 内部 Bug 猎人       |
+| `/mock-limits`     | 模拟速率限制        |
+| `/ctx_viz`         | 上下文可视化        |
+| `/break-cache`     | 强制缓存清除        |
+| `/ant-trace`       | 内部追踪工具        |
+| `/good-claude`     | 内部反馈            |
+| `/agents-platform` | 智能体平台          |
+| `/autofix-pr`      | 自动修复 PR         |
+| `/debug-tool-call` | 调试工具调用        |
+| `/reset-limits`    | 重置速率限制        |
+
+#### 隐藏 CLI 参数
+
+```
+--teleport [session]    恢复传送会话
+--remote [description]  创建远程会话
+--proactive             主动模式
+--assistant             助手模式
+--brief                 简报模式
+--remote-control        远程控制
+--hard-fail             硬失败模式
+--agent-teams           多代理团队
+```
+
+---
+
+### 6. Bridge — 远程遥控终端
+
+> 源码位置：`src/bridge/`（31 个文件）
+
+从 claude.ai 或手机直接操控本地 CLI。
+
+- **WebSocket 实时连接**：本地 CLI 通过 WebSocket 与 claude.ai 建立双向通道
+- **完整远程控制**：远程端可以发送消息、批准权限、查看输出
+- **进程间通信**：跨 Claude 会话的消息传递机制
+- **状态同步**：`bridgeStatusUtil.ts` 实时同步运行状态
+- **权限回调**：`bridgePermissionCallbacks.ts` 远程权限审批
+- **编译开关**：`feature('BRIDGE_MODE')`、`feature('DAEMON')`
+
+---
+
+### 7. 50 个编译开关 + 远程门控
+
+外部发布版是**阉割版**。Anthropic 通过三层门控控制功能：
+
+#### 第一层：编译时开关（`feature()`，约 50 个）
+
+构建时决定代码包含/排除，以下是完整列表：
+
+<details>
+<summary>点击展开全部 50 个编译开关</summary>
+
+| 开关                           | 说明                     |
+| ------------------------------ | ------------------------ |
+| `BUDDY`                        | 宠物伴侣系统             |
+| `KAIROS`                       | 持久助手模式             |
+| `KAIROS_BRIEF`                 | 简报模式                 |
+| `KAIROS_CHANNELS`              | 通道通知                 |
+| `KAIROS_GITHUB_WEBHOOKS`       | GitHub Webhook           |
+| `ULTRAPLAN`                    | 云端深度规划             |
+| `COORDINATOR_MODE`             | 多 Agent 编排            |
+| `BRIDGE_MODE`                  | 远程控制桥接             |
+| `VOICE_MODE`                   | 语音交互                 |
+| `PROACTIVE`                    | 主动自主模式             |
+| `FORK_SUBAGENT`                | 子代理分叉               |
+| `DAEMON`                       | 守护进程模式             |
+| `UDS_INBOX`                    | Unix Socket 收件箱       |
+| `WORKFLOW_SCRIPTS`             | 工作流脚本               |
+| `TORCH`                        | Torch 功能               |
+| `MONITOR_TOOL`                 | 监控工具                 |
+| `HISTORY_SNIP`                 | 历史截断                 |
+| `ANTI_DISTILLATION_CC`         | 反蒸馏保护               |
+| `BASH_CLASSIFIER`              | Bash 命令分类器          |
+| `BG_SESSIONS`                  | 后台会话                 |
+| `CACHED_MICROCOMPACT`          | 缓存微压缩               |
+| `CCR_REMOTE_SETUP`             | Web 远程设置             |
+| `CHICAGO_MCP`                  | MCP 扩展（Computer Use） |
+| `COMMIT_ATTRIBUTION`           | 提交归属标注             |
+| `CONNECTOR_TEXT`               | 连接器文本               |
+| `CONTEXT_COLLAPSE`             | 上下文折叠               |
+| `COWORKER_TYPE_TELEMETRY`      | 协作者遥测               |
+| `DOWNLOAD_USER_SETTINGS`       | 下载用户设置             |
+| `EXPERIMENTAL_SKILL_SEARCH`    | 实验性技能搜索           |
+| `EXTRACT_MEMORIES`             | 自动提取记忆             |
+| `FILE_PERSISTENCE`             | 文件持久化               |
+| `HARD_FAIL`                    | 硬失败模式               |
+| `LODESTONE`                    | Lodestone 功能           |
+| `MCP_SKILLS`                   | MCP 技能系统             |
+| `MEMORY_SHAPE_TELEMETRY`       | 记忆形状遥测             |
+| `MESSAGE_ACTIONS`              | 消息操作                 |
+| `NATIVE_CLIENT_ATTESTATION`    | 客户端证明               |
+| `PROMPT_CACHE_BREAK_DETECTION` | 缓存中断检测             |
+| `QUICK_SEARCH`                 | 快速搜索                 |
+| `REACTIVE_COMPACT`             | 响应式压缩               |
+| `SLOW_OPERATION_LOGGING`       | 慢操作日志               |
+| `STREAMLINED_OUTPUT`           | 精简输出                 |
+| `TEAMMEM`                      | 团队记忆同步             |
+| `TEMPLATES`                    | 模板/分类器              |
+| `TERMINAL_PANEL`               | 终端面板                 |
+| `TOKEN_BUDGET`                 | Token 预算               |
+| `TRANSCRIPT_CLASSIFIER`        | 转录分类器               |
+| `UNATTENDED_RETRY`             | 无人值守重试             |
+| `UPLOAD_USER_SETTINGS`         | 上传用户设置             |
+| `BREAK_CACHE_COMMAND`          | 缓存清除注入             |
+
+</details>
+
+#### 第二层：用户类型（`USER_TYPE`）
+
+- **`ant`**（Anthropic 内部）— 解锁全部功能、20 分钟 GrowthBook 刷新、调试工具、200+ 处专属检查
+- **`external`**（外部用户）— 裁剪版，6 小时 GrowthBook 刷新
+
+#### 第三层：GrowthBook 远程 A/B 测试
+
+| 开关                       | 控制内容                    |
+| -------------------------- | --------------------------- |
+| `tengu_kairos`             | KAIROS 助手模式开关         |
+| `tengu_onyx_plover`        | 自动做梦阈值（间隔/会话数） |
+| `tengu_cobalt_frost`       | 语音识别（Nova 3）开关      |
+| `tengu_ultraplan_model`    | Ultraplan 使用的模型        |
+| `tengu_ant_model_override` | 内部用户模型覆盖            |
+| `tengu_session_memory`     | 会话记忆功能                |
+| `tengu_max_version_config` | 自动更新 Kill Switch        |
+| `tengu_frond_boric`        | 数据接收器 Kill Switch      |
+| `tengu_herring_clock`      | 团队记忆路径                |
+| `tengu_sm_config`          | 会话记忆配置                |
+
+---
+
+## 隐藏环境变量速查
+
+<details>
+<summary>点击展开完整环境变量列表</summary>
+
+| 环境变量                             | 说明                      |
+| ------------------------------------ | ------------------------- |
+| `ANTHROPIC_MODEL`                    | 模型覆盖                  |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS`      | 最大输出 token            |
+| `CLAUDE_CODE_DISABLE_THINKING`       | 禁用思考                  |
+| `CLAUDE_CODE_PROACTIVE`              | 主动模式                  |
+| `CLAUDE_CODE_COORDINATOR_MODE`       | 协调器模式                |
+| `CLAUDE_CODE_BRIEF`                  | 简报模式                  |
+| `CLAUDE_CODE_USE_BEDROCK`            | 使用 AWS Bedrock          |
+| `CLAUDE_CODE_USE_VERTEX`             | 使用 Google Vertex        |
+| `CLAUDE_CODE_DISABLE_AUTO_MEMORY`    | 禁用自动记忆              |
+| `CLAUDE_CODE_EXTRA_BODY`             | API 附加 JSON             |
+| `CLAUDE_CODE_SYNTAX_HIGHLIGHT`       | 语法高亮主题              |
+| `CLAUDE_CODE_IDLE_THRESHOLD_MINUTES` | 空闲阈值（默认 75 分钟）  |
+| `CLAUDE_INTERNAL_FC_OVERRIDES`       | GrowthBook 覆盖（仅 ant） |
+
+</details>
+
+---
+
+## 项目结构
+
+```
+src/                    # 核心源码（1,987 个 TS/TSX）
+├── tools/              # 53 个工具（Bash/FileEdit/Agent/MCP...）
+├── commands/           # 87 个斜杠命令
+├── services/           # API / MCP / analytics / autoDream
+├── components/         # 148 个终端 UI 组件（React + Ink）
+├── hooks/              # 87 个自定义 Hooks
+├── buddy/              # 宠物伴侣系统
+├── assistant/          # KAIROS 助手模式
+├── coordinator/        # 多 Agent 协调器
+├── bridge/             # 远程控制桥接（31 文件）
+├── proactive/          # 主动模式
+├── vim/                # Vim 模式引擎
+├── voice/              # 语音交互
+└── ...
+shims/                  # 原生模块兼容替代
+vendor/                 # 原生绑定源码
+```
+
+---
+
+## 数据来源
+
+- npm 包：[@anthropic-ai/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+- 还原方式：提取 `cli.js.map` 中的 `sourcesContent`
+
+## 声明
+
+- 源码版权归 [Anthropic](https://www.anthropic.com) 所有
+- 仅用于技术研究与学习，请勿用于商业用途
+- 如有侵权，请联系删除

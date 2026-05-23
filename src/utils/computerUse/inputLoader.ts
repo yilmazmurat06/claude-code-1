@@ -5,6 +5,17 @@ import type {
 
 let cached: ComputerUseInputAPI | undefined
 
+function unwrapDefaultExport<T>(mod: T | { default: T }): T {
+  return (
+    typeof mod === 'object' &&
+    mod !== null &&
+    'default' in mod &&
+    mod.default !== undefined
+      ? mod.default
+      : mod
+  ) as T
+}
+
 /**
  * Package's js/index.js reads COMPUTER_USE_INPUT_NODE_PATH (baked by
  * build-with-plugins.ts on darwin targets, unset otherwise — falls through to
@@ -22,7 +33,11 @@ let cached: ComputerUseInputAPI | undefined
 export function requireComputerUseInput(): ComputerUseInputAPI {
   if (cached) return cached
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const input = require('@ant/computer-use-input') as ComputerUseInput
+  const input = unwrapDefaultExport(
+    require('@ant/computer-use-input') as ComputerUseInput | {
+      default: ComputerUseInput
+    },
+  )
   if (!input.isSupported) {
     throw new Error('@ant/computer-use-input is not supported on this platform')
   }

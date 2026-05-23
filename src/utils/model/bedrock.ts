@@ -3,13 +3,26 @@ import { refreshAndGetAwsCredentials } from '../auth.js'
 import { getAWSRegion, isEnvTruthy } from '../envUtils.js'
 import { logError } from '../log.js'
 import { getAWSClientProxyConfig } from '../proxy.js'
+import { importRequiredRuntimeModule } from '../runtimeModules.js'
+
+type AwsCommandClient = {
+  send(command: unknown): Promise<{
+    inferenceProfileSummaries?: Array<{ inferenceProfileId?: string }>
+    models?: Array<{ modelArn?: string }>
+    nextToken?: string
+  }>
+}
+
+type AwsCommandCtor = new (input: Record<string, unknown>) => unknown
 
 export const getBedrockInferenceProfiles = memoize(async function (): Promise<
   string[]
 > {
   const [client, { ListInferenceProfilesCommand }] = await Promise.all([
     createBedrockClient(),
-    import('@aws-sdk/client-bedrock'),
+    importRequiredRuntimeModule<{
+      ListInferenceProfilesCommand: AwsCommandCtor
+    }>('@aws-sdk/client-bedrock', 'Bedrock inference profile discovery'),
   ])
   const allProfiles = []
   let nextToken: string | undefined
@@ -48,7 +61,9 @@ export function findFirstMatch(
 }
 
 async function createBedrockClient() {
-  const { BedrockClient } = await import('@aws-sdk/client-bedrock')
+  const { BedrockClient } = await importRequiredRuntimeModule<{
+    BedrockClient: new (config: Record<string, unknown>) => AwsCommandClient
+  }>('@aws-sdk/client-bedrock', 'Bedrock model support')
   // Match the Anthropic Bedrock SDK's region behavior exactly:
   // - Reads AWS_REGION or AWS_DEFAULT_REGION env vars (not AWS config files)
   // - Falls back to 'us-east-1' if neither is set
@@ -57,7 +72,7 @@ async function createBedrockClient() {
 
   const skipAuth = isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)
 
-  const clientConfig: ConstructorParameters<typeof BedrockClient>[0] = {
+  const clientConfig: Record<string, unknown> = {
     region,
     ...(process.env.ANTHROPIC_BEDROCK_BASE_URL && {
       endpoint: process.env.ANTHROPIC_BEDROCK_BASE_URL,
@@ -94,13 +109,15 @@ async function createBedrockClient() {
 }
 
 export async function createBedrockRuntimeClient() {
-  const { BedrockRuntimeClient } = await import(
-    '@aws-sdk/client-bedrock-runtime'
-  )
+  const { BedrockRuntimeClient } = await importRequiredRuntimeModule<{
+    BedrockRuntimeClient: new (
+      config: Record<string, unknown>,
+    ) => AwsCommandClient
+  }>('@aws-sdk/client-bedrock-runtime', 'Bedrock runtime support')
   const region = getAWSRegion()
   const skipAuth = isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)
 
-  const clientConfig: ConstructorParameters<typeof BedrockRuntimeClient>[0] = {
+  const clientConfig: Record<string, unknown> = {
     region,
     ...(process.env.ANTHROPIC_BEDROCK_BASE_URL && {
       endpoint: process.env.ANTHROPIC_BEDROCK_BASE_URL,
@@ -144,7 +161,9 @@ export const getInferenceProfileBackingModel = memoize(async function (
   try {
     const [client, { GetInferenceProfileCommand }] = await Promise.all([
       createBedrockClient(),
-      import('@aws-sdk/client-bedrock'),
+      importRequiredRuntimeModule<{
+        GetInferenceProfileCommand: AwsCommandCtor
+      }>('@aws-sdk/client-bedrock', 'Bedrock inference profile lookup'),
     ])
     const command = new GetInferenceProfileCommand({
       inferenceProfileIdentifier: profileId,

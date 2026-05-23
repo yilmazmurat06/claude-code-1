@@ -1,1 +1,3 @@
-export {};
+# Ruby Claude API
+
+Restored placeholder content.

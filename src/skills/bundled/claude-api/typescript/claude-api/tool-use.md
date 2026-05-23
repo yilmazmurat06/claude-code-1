@@ -1,1 +1,3 @@
-export {};
+# TypeScript Tool Use
+
+Restored placeholder content.

@@ -146,6 +146,11 @@ export default class App extends PureComponent<Props, State> {
   // ssh reconnect, laptop wake) and trigger terminal mode re-assert.
   // Initialized to now so startup doesn't false-trigger.
   lastStdinTime = Date.now();
+  // Keep the event loop alive for interactive TTY sessions even before any
+  // component opts into raw-mode input. In restored builds the initial prompt
+  // tree may mount partially, and relying on useInput() to ref stdin causes
+  // the process to exit cleanly before the UI becomes interactive.
+  stdinKeepAliveActive = false;
 
   // Determines if TTY is supported on the provided stdin
   isRawModeSupported(): boolean {
@@ -183,8 +188,10 @@ export default class App extends PureComponent<Props, State> {
     if (this.props.stdout.isTTY && !isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)) {
       this.props.stdout.write(HIDE_CURSOR);
     }
+    this.setStdinKeepAlive(true);
   }
   override componentWillUnmount() {
+    this.setStdinKeepAlive(false);
     if (this.props.stdout.isTTY) {
       this.props.stdout.write(SHOW_CURSOR);
     }
@@ -226,7 +233,11 @@ export default class App extends PureComponent<Props, State> {
         // coexist -- our handler would drain stdin before Ink's can see it.
         // The buffered text is preserved for REPL.tsx via consumeEarlyInput().
         stopCapturingEarlyInput();
-        stdin.ref();
+        // KeepAlive already holds the event loop open for interactive TTYs.
+        // Only ref here when no keepAlive is active (e.g. custom non-App use).
+        if (!this.stdinKeepAliveActive) {
+          stdin.ref();
+        }
         stdin.setRawMode(true);
         stdin.addListener('readable', this.handleReadable);
         // Enable bracketed paste mode
@@ -275,9 +286,25 @@ export default class App extends PureComponent<Props, State> {
       this.props.stdout.write(DBP);
       stdin.setRawMode(false);
       stdin.removeListener('readable', this.handleReadable);
-      stdin.unref();
+      if (!this.stdinKeepAliveActive) {
+        stdin.unref();
+      }
     }
   };
+  setStdinKeepAlive(active: boolean): void {
+    const {
+      stdin
+    } = this.props;
+    if (!stdin.isTTY || this.stdinKeepAliveActive === active) {
+      return;
+    }
+    this.stdinKeepAliveActive = active;
+    if (active) {
+      stdin.ref();
+    } else if (this.rawModeEnabledCount === 0) {
+      stdin.unref();
+    }
+  }
 
   // Helper to flush incomplete escape sequences
   flushIncomplete = (): void => {
